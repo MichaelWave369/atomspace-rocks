@@ -37,6 +37,7 @@
 // #include "rocksdb/filter_policy.h"
 
 #include <opencog/util/Logger.h>
+#include <opencog/atoms/atom_types/NameServer.h>
 #include <opencog/atoms/base/Node.h>
 #include <opencog/persist/rocks-types/atom_types.h>
 
@@ -335,6 +336,42 @@ std::string RocksStorage::monitor(void)
 	rs += " i@: " + std::to_string(count_records("i@"));
 	rs += " h@: " + std::to_string(count_records("h@"));
 	rs += "\n";
+
+	// Count persisted Atoms by concrete type without loading them into
+	// the AtomSpace. Node and Link lookup keys are ordered by their
+	// s-expression, so one scan of each prefix is enough for the report.
+	std::map<std::string, size_t> type_counts;
+	auto collect_type_counts = [&](const char* pfx)
+	{
+		auto it = _rfile->NewIterator(rocksdb::ReadOptions());
+		for (it->Seek(pfx);
+		     it->Valid() and it->key().starts_with(pfx);
+		     it->Next())
+		{
+			const std::string key = it->key().ToString();
+			const size_t begin = 3; // Skip "n@(" or "l@(".
+			const size_t end = key.find_first_of(" \t\n)", begin);
+			if (std::string::npos == end or begin == end) continue;
+
+			std::string type_name = key.substr(begin, end - begin);
+			Type type = nameserver().getType(type_name);
+			if (NOTYPE != type)
+				type_name = nameserver().getTypeName(type);
+
+			type_counts[type_name]++;
+		}
+		delete it;
+	};
+
+	collect_type_counts("n@(");
+	collect_type_counts("l@(");
+
+	if (not type_counts.empty())
+	{
+		rs += "  Atom type counts:\n";
+		for (const auto& tc : type_counts)
+			rs += "    " + tc.first + ": " + std::to_string(tc.second) + "\n";
+	}
 
 	if (_multi_space)
 	{
