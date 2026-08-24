@@ -1,0 +1,74 @@
+/*
+ * tests/persist/rocks/StorageReportUTest.cxxtest
+ *
+ * Verify that RocksStorage::monitor() reports persisted Atom counts
+ * by concrete type without loading the database into an AtomSpace.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+#include <cstdio>
+#include <filesystem>
+#include <string>
+
+#include <opencog/atoms/base/Link.h>
+#include <opencog/atoms/base/Node.h>
+#include <opencog/atoms/atom_types/atom_types.h>
+#include <opencog/atoms/value/VoidValue.h>
+#include <opencog/atomspace/AtomSpace.h>
+#include <opencog/persist/rocks/RocksStorage.h>
+#include <opencog/persist/rocks-types/atom_types.h>
+
+using namespace opencog;
+
+class StorageReportUTest : public CxxTest::TestSuite
+{
+	private:
+		std::string uri;
+
+	public:
+		StorageReportUTest(void)
+		{
+			uri = "rocks:///tmp/cog-rocks-storage-report-utest";
+		}
+
+		~StorageReportUTest()
+		{
+			std::string dbpath = uri.substr(8);
+			std::filesystem::remove_all(dbpath);
+		}
+
+		void test_type_counts(void);
+};
+
+void StorageReportUTest::test_type_counts(void)
+{
+	AtomSpacePtr as = createAtomSpace();
+	Handle hsn = as->add_node(ROCKS_STORAGE_NODE, std::string(uri));
+	RocksStorageNodePtr store = RocksStorageNodeCast(hsn);
+	store->setValue(as->add_node(PREDICATE_NODE, "*-open-*"), createVoidValue());
+
+	TSM_ASSERT("cannot connect to storage", store->connected());
+	if (not store->connected()) return;
+
+	store->erase();
+
+	Handle schema_one = createNode(SCHEMA_NODE, "report-schema-one");
+	Handle schema_two = createNode(SCHEMA_NODE, "report-schema-two");
+	Handle predicate = createNode(PREDICATE_NODE, "report-predicate");
+	Handle list = createLink(LIST_LINK, schema_one, schema_two);
+
+	store->storeAtom(schema_one, true);
+	store->storeAtom(schema_two, true);
+	store->storeAtom(predicate, true);
+	store->storeAtom(list, true);
+	store->barrier();
+
+	const std::string report = store->monitor();
+	TS_ASSERT_DIFFERS(report.find("Atom type counts:"), std::string::npos);
+	TS_ASSERT_DIFFERS(report.find("SchemaNode: 2"), std::string::npos);
+	TS_ASSERT_DIFFERS(report.find("PredicateNode: 1"), std::string::npos);
+	TS_ASSERT_DIFFERS(report.find("ListLink: 1"), std::string::npos);
+
+	store->kill_data();
+	store->setValue(as->add_node(PREDICATE_NODE, "*-close-*"), createVoidValue());
+}
