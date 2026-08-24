@@ -152,6 +152,11 @@ class RocksStorage : public StorageNode
 		void print_range(const std::string&); // Debugging utility
 
 		// AtomStorage interface
+		bool have_atom(const Handle& h)
+		{
+			if (nullptr == h) return false;
+			return not findAtom(h).empty();
+		}
 		void getAtom(const Handle&);
 		Handle getLink(Type, const HandleSeq&);
 		void fetchIncomingSet(AtomSpace*, const Handle&);
