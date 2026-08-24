@@ -10,6 +10,7 @@ LINK_LIBRARIES(
 # atomspace/persist/sql/multi-driver unit tests.
 # Same as the atomspace/persist/cog-storage unit tests.
 ADD_CXXTEST(BasicSaveUTest)
+ADD_CXXTEST(HaveAtomUTest)
 ADD_CXXTEST(ValueSaveUTest)
 ADD_CXXTEST(PersistUTest)
 ADD_CXXTEST(FetchUTest)
