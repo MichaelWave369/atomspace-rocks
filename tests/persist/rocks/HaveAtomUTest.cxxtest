@@ -1,0 +1,69 @@
+/*
+ * tests/persist/rocks/HaveAtomUTest.cxxtest
+ *
+ * Verify that RocksStorage can report whether an Atom is held in
+ * persistent storage without fetching it into the local AtomSpace.
+ *
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+#include <filesystem>
+#include <string>
+
+#include <opencog/atoms/base/Node.h>
+#include <opencog/atoms/atom_types/atom_types.h>
+#include <opencog/atoms/value/VoidValue.h>
+#include <opencog/atomspace/AtomSpace.h>
+#include <opencog/persist/rocks/RocksStorage.h>
+#include <opencog/persist/rocks-types/atom_types.h>
+
+using namespace opencog;
+
+class HaveAtomUTest : public CxxTest::TestSuite
+{
+	private:
+		std::string uri;
+
+	public:
+		HaveAtomUTest(void)
+		{
+			uri = "rocks:///tmp/cog-rocks-have-atom-utest";
+			std::filesystem::remove_all(uri.substr(8));
+		}
+
+		~HaveAtomUTest()
+		{
+			std::filesystem::remove_all(uri.substr(8));
+		}
+
+		void test_have_atom_without_fetch(void);
+};
+
+void HaveAtomUTest::test_have_atom_without_fetch(void)
+{
+	AtomSpacePtr as = createAtomSpace();
+	Handle hsn = as->add_node(ROCKS_STORAGE_NODE, std::string(uri));
+	RocksStorageNodePtr store = RocksStorageNodeCast(hsn);
+	store->setValue(as->add_node(PREDICATE_NODE, "*-open-*"), createVoidValue());
+
+	TSM_ASSERT("cannot connect to storage", store->connected());
+	if (not store->connected()) return;
+
+	Handle stored = createNode(CONCEPT_NODE, "stored-atom");
+	Handle missing = createNode(CONCEPT_NODE, "missing-atom");
+
+	TS_ASSERT(not store->have_atom(stored));
+	TS_ASSERT(not store->have_atom(missing));
+
+	store->storeAtom(stored, true);
+	store->barrier();
+
+	TS_ASSERT(store->have_atom(stored));
+	TS_ASSERT(not store->have_atom(missing));
+
+	// The existence query must not fetch either Atom into this AtomSpace.
+	TS_ASSERT(nullptr == as->get_atom(stored));
+	TS_ASSERT(nullptr == as->get_atom(missing));
+
+	store->kill_data();
+	store->setValue(as->add_node(PREDICATE_NODE, "*-close-*"), createVoidValue());
+}
